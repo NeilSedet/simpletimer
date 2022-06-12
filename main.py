@@ -4,72 +4,106 @@ import json
 
 filename = "log.json"
 argumentList = sys.argv[1:]
-action = argumentList[0]
-task = argumentList[1]
 
 now = datetime.datetime.now()
-date_time = now.strftime("%m:%d:%Y %H:%M:%S\n")
 
-with open(filename, "r", encoding="utf-8") as file:
-    data = json.loads(file.read())
 
+def strfdelta(tdelta, fmt):
+    d = {"d": tdelta.days}
+    d["H"], rem = divmod(tdelta.seconds, 3600)
+    d["M"], d["S"] = divmod(rem, 60)
+    return fmt.format(**d)
+
+
+def convert_to_timedelta(self, string):
+        """
+        Returns a time delta for strings in a format of: 0:00:00:00.0000
+        Using RegEx to not introduce a dependancy on another package
+        """
+        dt_re = re.compile(r'^(\d+):(\d\d):(\d\d):(\d\d).(\d+)$')
+        tmp = dt_re.match(string)
+        try:
+            days = self._regex_number_to_int(tmp, 1)
+            hours = self._regex_number_to_int(tmp, 2)
+            mins = self._regex_number_to_int(tmp, 3)
+            secs = self._regex_number_to_int(tmp, 4)
+            subsecs = self._regex_number_to_int(tmp, 5)
+            td = datetime.timedelta(days=days, seconds=secs, microseconds=subsecs, minutes=mins, hours=hours)
+            return td
+        except AttributeError:
+            self.log.info('Unable to convert %s to timedelta', string)
+        except TypeError:
+            self.log.info('Unable to convert %s to type timedelta', string)
+
+
+def datetime_string(x):
+    if isinstance(x, str):
+        return datetime.datetime.strptime(x, "%m:%d:%Y %H:%M:%S")
+    elif isinstance(x, datetime.timedelta):
+        # return strfdelta(x, "{d} {H}:{M}:{S}")
+        return str(x)
+    else:
+        try:
+            return x.strftime("%m:%d:%Y %H:%M:%S")
+        except:
+            t = datetime.datetime.strptime(t,"%H:%M:%S")
+            return datetime.timedelta(days=t.days, hours=t.hour, minutes=t.minute, seconds=t.second)
+
+
+
+try:
+    action = argumentList[0]
+    task = argumentList[1]
+except:
+    print("Usage: simp {action} {task}")
+    print("Type simp help for more info")
+    exit()
 
 
 def start():
     with open(filename, "r", encoding="utf-8") as file:
-        last_line = file.readlines()[-1]
-        old_action = last_line.partition(" ")[0]
 
-        if old_action == 'start' or old_action == 'resume':
-            print("Task already started")
-            return
+        data = json.loads(file.read())
+        data[task] = dict()
 
-    with open(filename, "a", encoding="utf-8") as out:
-        out.write(f"{action} {date_time}")
+        data[task]["last_runtime"] = datetime_string(now)
+        data[task]["status"] = "running"
+        data[task]["time_elapsed"] = "0 0:0:0"
+
+        json_out = json.dumps(data, indent=4, sort_keys=True)
+
+        with open(filename, "w") as outfile:
+            outfile.write(json_out)
 
 
 def stop():
     with open(filename, "r", encoding="utf-8") as file:
-        lines = file.readlines()
-        last_line = lines[-1]
-        old_action = last_line.partition(" ")[0]
+        data = json.loads(file.read())
+        assert task in data, "Task not created"
 
-        if old_action == 'stop':
-            print("No task started")
-            return
-
-        if old_action == "resume":
-            last_line = lines[-2]
-
-        str_old_date_time = last_line.partition(" ")[2]
-        old_date_time = datetime.datetime.strptime(
-            str_old_date_time, "%m:%d:%Y %H:%M:%S\n"
+        data[task]["status"] = "paused"
+        data[task]["time_elapsed"] = datetime_string(
+            datetime_string(data[task]["time_elapsed"])
+            + (now - datetime_string(data[task]["last_runtime"]))
         )
-        diff = now - old_date_time
-        no_seconds = ":".join(str(diff).split(":")[:2])
-        print(no_seconds)
 
-    with open(filename, "a", encoding="utf-8") as out:
-        out.write(f"{action} {date_time}")
+        json_out = json.dumps(data, indent=4, sort_keys=True)
 
-
-def clear():
-    with open(filename, "w", encoding="utf-8") as out:
-        out.write("log.txt\n")
-        out.write("---\n")
+        with open(filename, "w") as outfile:
+            outfile.write(json_out)
 
 
 def resume():
     with open(filename, "r", encoding="utf-8") as file:
-        last_line = file.readlines()[-1]
-        old_action = last_line.partition(" ")[0]
+        data = json.loads(file.read())
 
-        if old_action == 'start' or old_action == 'resume':
-            print("Task not paused")
-            return
+        data[task]["last_runtime"] = datetime_string(now)
+        data[task]["status"] = "running"
 
-    with open(filename, "a", encoding="utf-8") as out:
-        out.write(f"{action} {date_time}")
+        json_out = json.dumps(data, indent=4, sort_keys=True)
+
+        with open(filename, "w") as outfile:
+            outfile.write(json_out)
 
 
 locals()[action]()
